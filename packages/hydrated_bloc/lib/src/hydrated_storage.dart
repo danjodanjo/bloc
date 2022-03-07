@@ -87,7 +87,11 @@ class HydratedStorage implements Storage {
     HydratedCipher? encryptionCipher,
   }) {
     return _lock.synchronized(() async {
-      if (_instance != null) return _instance!;
+      if (_instance != null) {
+        print('Returning existing instance');
+        return _instance!;
+      }
+
       // Use HiveImpl directly to avoid conflicts with existing Hive.init
       // https://github.com/hivedb/hive/issues/336
       hive = HiveImpl();
@@ -97,17 +101,18 @@ class HydratedStorage implements Storage {
       if (storageDirectory == webStorageDirectory) {
         try {
           print('Initialize hive');
-          box = await hive.openBox<dynamic>(
-            'hydrated_box',
-            encryptionCipher: encryptionCipher,
-          );
+          storage = html.window.sessionStorage;
+          // box = await hive.openBox<dynamic>(
+          //   'hydrated_box',
+          //   encryptionCipher: encryptionCipher,
+          // );
           // fallback to local storage should indexedDB of hive is
           // disabled on firefox private browsing
         } catch (err) {
           print('Cannot initialize hive. Falling back to localStorage');
-          storage = html.window.localStorage;
         }
       } else {
+        print('Initialize mobile app hive');
         hive.init(storageDirectory.path);
         box = await hive.openBox<dynamic>(
           'hydrated_box',
@@ -117,6 +122,9 @@ class HydratedStorage implements Storage {
       }
 
       return _instance = HydratedStorage(box: box, storage: storage);
+    }).onError((error, stackTrace) async {
+      print('Goes here');
+      return HydratedStorage();
     });
   }
 
@@ -146,15 +154,19 @@ class HydratedStorage implements Storage {
   static final _lock = Lock();
   static HydratedStorage? _instance;
 
-  final Box? _box;
-  final html.Storage? _storage;
+  late final Box? _box;
+  late final html.Storage? _storage;
 
   @override
   dynamic read(String key) {
-    if (_box?.isOpen ?? false) _box?.get(key);
+    if (_box?.isOpen ?? false) {
+      print('Reading from box');
+      return _box?.get(key);
+    }
 
-    if (_storage != null && (_storage?.containsKey(key) ?? false)) {
-      return _storage!['key'];
+    if (_storage != null) {
+      print('Reading from storage');
+      return _storage!['key'] ?? null;
     }
 
     return null;
@@ -163,12 +175,13 @@ class HydratedStorage implements Storage {
   @override
   Future<void> write(String key, dynamic value) async {
     if (_box?.isOpen ?? false) {
+      print('Writing to box');
       return _lock.synchronized(() => _box?.put(key, value));
     }
 
     if (_storage != null) {
-      return _lock
-          .synchronized(() => _storage?.addAll({key: value.toString()}));
+      print('Writing to storage');
+      return _lock.synchronized(() => _storage![key] = value.toString());
     }
   }
 
