@@ -90,7 +90,7 @@ void main() {
       setUp(() {
         box = MockBox();
         when(() => box.clear()).thenAnswer((_) async => 0);
-        storage = HydratedStorage(box);
+        storage = HydratedStorage(box: box);
       });
 
       group('read', () {

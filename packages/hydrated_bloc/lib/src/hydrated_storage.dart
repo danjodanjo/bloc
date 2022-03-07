@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:html' as html;
 
 import 'package:hive/hive.dart';
 // ignore: implementation_imports
@@ -32,7 +33,11 @@ abstract class Storage {
 class HydratedStorage implements Storage {
   /// {@macro hydrated_storage}
   @visibleForTesting
-  HydratedStorage(this._box);
+  HydratedStorage({
+    Box<dynamic>? box,
+    html.Storage? storage,
+  })  : _box = box,
+        _storage = storage;
 
   /// Sentinel directory used to determine that web storage should be used
   /// when initializing [HydratedStorage].
@@ -86,13 +91,22 @@ class HydratedStorage implements Storage {
       // Use HiveImpl directly to avoid conflicts with existing Hive.init
       // https://github.com/hivedb/hive/issues/336
       hive = HiveImpl();
-      Box<dynamic> box;
+      Box<dynamic>? box;
+      html.Storage? storage;
 
       if (storageDirectory == webStorageDirectory) {
-        box = await hive.openBox<dynamic>(
-          'hydrated_box',
-          encryptionCipher: encryptionCipher,
-        );
+        try {
+          print('Initialize hive');
+          box = await hive.openBox<dynamic>(
+            'hydrated_box',
+            encryptionCipher: encryptionCipher,
+          );
+          // fallback to local storage should indexedDB of hive is
+          // disabled on firefox private browsing
+        } catch (err) {
+          print('Cannot initialize hive. Falling back to localStorage');
+          storage = html.window.localStorage;
+        }
       } else {
         hive.init(storageDirectory.path);
         box = await hive.openBox<dynamic>(
@@ -102,7 +116,7 @@ class HydratedStorage implements Storage {
         await _migrate(storageDirectory, box);
       }
 
-      return _instance = HydratedStorage(box);
+      return _instance = HydratedStorage(box: box, storage: storage);
     });
   }
 
@@ -132,30 +146,53 @@ class HydratedStorage implements Storage {
   static final _lock = Lock();
   static HydratedStorage? _instance;
 
-  final Box _box;
+  final Box? _box;
+  final html.Storage? _storage;
 
   @override
-  dynamic read(String key) => _box.isOpen ? _box.get(key) : null;
+  dynamic read(String key) {
+    if (_box?.isOpen ?? false) _box?.get(key);
+
+    if (_storage != null && (_storage?.containsKey(key) ?? false)) {
+      return _storage!['key'];
+    }
+
+    return null;
+  }
 
   @override
   Future<void> write(String key, dynamic value) async {
-    if (_box.isOpen) {
-      return _lock.synchronized(() => _box.put(key, value));
+    if (_box?.isOpen ?? false) {
+      return _lock.synchronized(() => _box?.put(key, value));
+    }
+
+    if (_storage != null) {
+      return _lock
+          .synchronized(() => _storage?.addAll({key: value.toString()}));
     }
   }
 
   @override
   Future<void> delete(String key) async {
-    if (_box.isOpen) {
-      return _lock.synchronized(() => _box.delete(key));
+    if (_box?.isOpen ?? false) {
+      return _lock.synchronized(() => _box?.delete(key));
+    }
+
+    if (_storage != null) {
+      return _lock.synchronized(() => _storage?.remove(key));
     }
   }
 
   @override
   Future<void> clear() async {
-    if (_box.isOpen) {
+    if (_box?.isOpen ?? false) {
       _instance = null;
-      return _lock.synchronized(_box.clear);
+      return _lock.synchronized(_box!.clear);
+    }
+
+    if (_storage != null) {
+      _instance = null;
+      return _lock.synchronized(() => _storage?.clear());
     }
   }
 }
