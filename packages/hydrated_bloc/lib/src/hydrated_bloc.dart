@@ -115,10 +115,14 @@ mixin HydratedMixin<State> on BlocBase<State> {
   /// ```
   void hydrate() {
     final storage = HydratedBloc.storage;
+    print('hydrating..');
     try {
       final stateJson = _toJson(state);
       if (stateJson != null) {
+        print('State json is not null.. writing..');
         storage.write(storageToken, stateJson).then((_) {}, onError: onError);
+      } else {
+        print("State json is null... don't write");
       }
     } catch (error, stackTrace) {
       onError(error, stackTrace);
@@ -132,16 +136,21 @@ mixin HydratedMixin<State> on BlocBase<State> {
     final storage = HydratedBloc.storage;
     if (_state != null) return _state!;
     try {
+      print('Reading state from storage with token $storageToken...');
       final stateJson = storage.read(storageToken) as Map<dynamic, dynamic>?;
       if (stateJson == null) {
+        print('No state is found from storage.. assigning with super.state');
         _state = super.state;
         return super.state;
       }
+      print('Found state json... $stateJson');
       final cachedState = _fromJson(stateJson);
       if (cachedState == null) {
+        print('Cached state is not found... assigning with super.state');
         _state = super.state;
         return super.state;
       }
+      print('Cached state is found.. using cached state');
       _state = cachedState;
       return cachedState;
     } catch (error, stackTrace) {
@@ -154,11 +163,14 @@ mixin HydratedMixin<State> on BlocBase<State> {
   @override
   void onChange(Change<State> change) {
     super.onChange(change);
+    print('on change is triggered for token $storageToken');
     final storage = HydratedBloc.storage;
     final state = change.nextState;
     try {
       final stateJson = _toJson(state);
+
       if (stateJson != null) {
+        print('onChange: writing $stateJson to $storageToken');
         storage.write(storageToken, stateJson).then((_) {}, onError: onError);
       }
     } catch (error, stackTrace) {
