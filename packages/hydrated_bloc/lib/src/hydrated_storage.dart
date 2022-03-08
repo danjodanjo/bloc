@@ -88,7 +88,7 @@ class HydratedStorage implements Storage {
   }) {
     return _lock.synchronized(() async {
       if (_instance != null) {
-        print('Returning existing instance');
+        //print('Returning existing instance');
         return _instance!;
       }
 
@@ -100,19 +100,20 @@ class HydratedStorage implements Storage {
 
       if (storageDirectory == webStorageDirectory) {
         try {
-          print('Initialize hive');
-          storage = html.window.sessionStorage;
-          // box = await hive.openBox<dynamic>(
-          //   'hydrated_box',
-          //   encryptionCipher: encryptionCipher,
-          // );
+          //print('Initialize hive');
+
+          box = await hive.openBox<dynamic>(
+            'hydrated_box',
+            encryptionCipher: encryptionCipher,
+          );
           // fallback to local storage should indexedDB of hive is
           // disabled on firefox private browsing
         } catch (err) {
-          print('Cannot initialize hive. Falling back to localStorage');
+          storage = html.window.sessionStorage;
+          //print('Cannot initialize hive. Falling back to localStorage');
         }
       } else {
-        print('Initialize mobile app hive');
+        //print('Initialize mobile app hive');
         hive.init(storageDirectory.path);
         box = await hive.openBox<dynamic>(
           'hydrated_box',
@@ -122,9 +123,6 @@ class HydratedStorage implements Storage {
       }
 
       return _instance = HydratedStorage(box: box, storage: storage);
-    }).onError((error, stackTrace) async {
-      print('Goes here');
-      return HydratedStorage();
     });
   }
 
@@ -160,13 +158,13 @@ class HydratedStorage implements Storage {
   @override
   dynamic read(String key) {
     if (_box?.isOpen ?? false) {
-      print('Reading from box');
+      //print('Reading from box');
       return _box?.get(key);
     }
 
     if (_storage != null) {
-      print('Reading from storage');
-      return _storage!['key'] ?? null;
+      //print('Reading from storage. Key: $key, value: ${_storage![key]}');
+      return !(_storage!.containsKey(key)) ? null : jsonDecode(_storage![key]!);
     }
 
     return null;
@@ -175,13 +173,13 @@ class HydratedStorage implements Storage {
   @override
   Future<void> write(String key, dynamic value) async {
     if (_box?.isOpen ?? false) {
-      print('Writing to box');
+      //print('Writing to box');
       return _lock.synchronized(() => _box?.put(key, value));
     }
 
     if (_storage != null) {
-      print('Writing to storage');
-      return _lock.synchronized(() => _storage![key] = value.toString());
+      //print('Writing to storage. Key: $key, value: $value');
+      return _lock.synchronized(() => _storage![key] = jsonEncode(value));
     }
   }
 
